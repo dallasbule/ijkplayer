@@ -1,7 +1,7 @@
 /**
  * 复制mediaControl系统源码，进行改写利用,便于自定义修改
  */
-package com.sq.firstapp.widget.media;
+package com.sq.firstapp.media;
 
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
@@ -26,7 +26,6 @@ import android.view.WindowManager;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
-import android.widget.MediaController;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;

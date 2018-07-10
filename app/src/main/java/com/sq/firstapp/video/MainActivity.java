@@ -1,16 +1,13 @@
 package com.sq.firstapp.video;
 
 import android.net.Uri;
-import android.support.v4.view.ViewPager;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.Toolbar;
-import android.widget.TableLayout;
 
-import com.sq.firstapp.widget.media.AndroidMediaController;
-import com.sq.firstapp.widget.media.IRenderView;
-import com.sq.firstapp.widget.media.IjkVideoView;
+import com.sq.firstapp.media.AndroidMediaController;
+import com.sq.firstapp.media.IjkVideoView;
 
 import tv.danmaku.ijk.media.player.IMediaPlayer;
 import tv.danmaku.ijk.media.player.IjkMediaPlayer;
@@ -18,8 +15,6 @@ import tv.danmaku.ijk.media.player.IjkMediaPlayer;
 public class MainActivity extends AppCompatActivity implements IMediaPlayer.OnPreparedListener {
 
     private IjkVideoView videoView;
-    //网络信息显示框（后期会隐藏或者删减）
-    private TableLayout mHudView;
     //控制播放进度
     Toolbar toolbar;
     private AndroidMediaController mMediaController;
@@ -42,8 +37,6 @@ public class MainActivity extends AppCompatActivity implements IMediaPlayer.OnPr
         mMediaController.setSupportActionBar(actionBar);
 
         videoView = findViewById(R.id.video_view);
-        mHudView = findViewById(R.id.hud_view);
-        videoView.setHudView(mHudView);
         videoView.setMediaController(mMediaController);
 
         IjkMediaPlayer.loadLibrariesOnce(null);

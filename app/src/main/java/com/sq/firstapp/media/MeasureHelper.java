@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.sq.firstapp.widget.media;
+package com.sq.firstapp.media;
 
 import android.content.Context;
 import android.support.annotation.NonNull;

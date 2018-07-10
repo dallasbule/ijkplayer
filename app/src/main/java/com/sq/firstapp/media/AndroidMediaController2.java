@@ -2,7 +2,7 @@
  * 此文件为利用源码MediaControl来实现，为官方实现方式
  */
 
-package com.sq.firstapp.widget.media;
+package com.sq.firstapp.media;
 
 import android.content.Context;
 import android.support.annotation.NonNull;

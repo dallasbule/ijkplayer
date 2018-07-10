@@ -15,10 +15,9 @@
  * limitations under the License.
  */
 
-package com.sq.firstapp.widget.media;
+package com.sq.firstapp.media;
 
 import android.view.View;
-import android.widget.MediaController;
 
 public interface IMediaController {
     void hide();

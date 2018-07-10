@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.sq.firstapp.widget.media;
+package com.sq.firstapp.media;
 
 import tv.danmaku.ijk.media.player.IMediaPlayer;
 import tv.danmaku.ijk.media.player.IjkMediaPlayer;
