@@ -29,7 +29,7 @@ public interface IMediaController {
 
     void setEnabled(boolean enabled);
 
-    void setMediaPlayer(MediaController.MediaPlayerControl player);
+    void setMediaPlayer(AndroidMediaController.MediaPlayerControl player);
 
     void show(int timeout);
 
