@@ -1,6 +1,3 @@
-/**
- * 复制mediaControl系统源码，进行改写利用,便于自定义修改
- */
 package com.sq.firstapp.media;
 
 import android.annotation.SuppressLint;
@@ -39,50 +36,27 @@ import java.util.ArrayList;
 import java.util.Formatter;
 import java.util.Locale;
 
+
 /**
- * A view containing controls for a MediaPlayer. Typically contains the
- * buttons like "Play/Pause", "Rewind", "Fast Forward" and a progress
- * slider. It takes care of synchronizing the controls with the state
- * of the MediaPlayer.
- * <p>
- * The way to use this class is to instantiate it programmatically.
- * The MediaController will create a default set of controls
- * and put them in a window floating above your application. Specifically,
- * the controls will float above the view specified with setAnchorView().
- * The window will disappear if left idle for three seconds and reappear
- * when the user touches the anchor view.
- * <p>
- * Functions like show() and hide() have no effect when MediaController
- * is created in an xml layout.
- * <p>
- * MediaController will hide and
- * show the buttons according to these rules:
- * <ul>
- * <li> The "previous" and "next" buttons are hidden until setPrevNextListeners()
- * has been called
- * <li> The "previous" and "next" buttons are visible but disabled if
- * setPrevNextListeners() was called with null listeners
- * <li> The "rewind" and "fastforward" buttons are shown unless requested
- * otherwise by using the MediaController(Context, boolean) constructor
- * with the boolean set to false
- * </ul>
+ * 复制mediaControl系统源码，进行改写利用,便于自定义修改
+ * 通过Window的方式来显示MediaController，MediaController是一个填充屏幕的布局，但是背景是透明的
  */
+
 
 @TargetApi(Build.VERSION_CODES.HONEYCOMB)
 public class AndroidMediaController extends FrameLayout implements IMediaController {
 
-    private MediaPlayerControl mPlayer;
     private final Context mContext;
-    private View mAnchor;
-    private View mRoot;
+    private View mAnchor;// VideoView中调用setAnchorView()设置进来的View，MediaController显示的时候会根据该AnchorView的位置进行显示
+    private View mRoot;// MediaController最外层的根布局
     private WindowManager mWindowManager;
-    private Window mWindow;
-    private View mDecor;
-    private WindowManager.LayoutParams mDecorLayoutParams;
+    private Window mWindow;//整个contronl的window（窗口)
+    private View mDecor;//整个View的最顶层布局，可理解用为这个view控制一些监听和事件，而mAnchor在被定位在这个view中
+    private WindowManager.LayoutParams mDecorLayoutParams;//当前整个control控件的布局
     private ProgressBar mProgress;
     private TextView mEndTime, mCurrentTime;
     private boolean mShowing;
-    private boolean mDragging;
+    private boolean mDragging;// 默认自动消失的时间
     private static final int sDefaultTimeout = 3000;
     private final boolean mUseFastForward;
     private boolean mFromXml;
@@ -99,6 +73,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     private CharSequence mPauseDescription;
     private final AccessibilityManager mAccessibilityManager;
     private ActionBar mActionBar;
+    private MediaPlayerControl mPlayer; //播放控制
 
     public AndroidMediaController(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -120,6 +95,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         super(context);
         mContext = context;
         mUseFastForward = useFastForward;
+        //创建该control的布局
         initFloatingWindowLayout();
         initFloatingWindow();
         mAccessibilityManager = (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
@@ -133,57 +109,69 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     private void initFloatingWindow() {
         mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
         try {
+            //利用反射获取PhoneWindow对象
             Class windowClass = null;
             windowClass = Class.forName("com.android.internal.policy.PhoneWindow");
             Constructor<?> localConstructor = null;
             localConstructor = windowClass.getConstructor(Context.class);
-            mWindow= (Window) localConstructor.newInstance(this.getContext());
+            mWindow = (Window) localConstructor.newInstance(this.getContext());
         } catch (Exception e) {
             e.printStackTrace();
         }
         mWindow.setWindowManager(mWindowManager, null, null);
         mWindow.requestFeature(Window.FEATURE_NO_TITLE);
+        // 通过WindowManager去add该Decor以及remove来实现MediaController的显示与隐藏
         mDecor = mWindow.getDecorView();
         mDecor.setOnTouchListener(mTouchListener);
         mWindow.setContentView(this);
+        //给该窗口设置透明模式
         mWindow.setBackgroundDrawableResource(android.R.color.transparent);
 
-        // While the media controller is up, the volume control keys should
-        // affect the media stream type
+        // 控制音量
         mWindow.setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
         setFocusable(true);
         setFocusableInTouchMode(true);
+        //控制childView获取焦点的能力，该设置指先分发给ChildView进行处理
         setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        //使得该控件获取焦点
         requestFocus();
     }
 
-    // Allocate and initialize the static parts of mDecorLayoutParams. Must
-    // also call updateFloatingWindowLayout() to fill in the dynamic parts
-    // (y and width) before mDecorLayoutParams can be used.
+
+    /**
+     * 可以理解为对control布局的重新测量及定位
+     */
     private void initFloatingWindowLayout() {
         mDecorLayoutParams = new WindowManager.LayoutParams();
         WindowManager.LayoutParams p = mDecorLayoutParams;
         p.gravity = Gravity.TOP | Gravity.LEFT;
         p.height = LayoutParams.WRAP_CONTENT;
         p.x = 0;
+        // 用来设置弹出框（即这个window）的透明背景遮罩，若不设置则为黑色，此处为透明
         p.format = PixelFormat.TRANSLUCENT;
+        //设置形成窗口的类型，此处为面板窗口，显示于宿主窗口的上层
         p.type = WindowManager.LayoutParams.TYPE_APPLICATION_PANEL;
+        //设置窗口的属性，即是否有聚焦、可点击等等
         p.flags |= WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                 | WindowManager.LayoutParams.FLAG_SPLIT_TOUCH;
+        //获取当前Activity中的View中的TOken,来依附Activity
         p.token = null;
-        p.windowAnimations = 0; // android.R.style.DropDownAnimationDown;
+        //动画属性，此处不设置，也可设置为android.R.style.DropDownAnimationDown等
+        p.windowAnimations = 0;
     }
 
-    // Update the dynamic parts of mDecorLayoutParams
-    // Must be called with mAnchor != NULL.
+    /**
+     * 更新布局，其中anchor不可以为null
+     */
     private void updateFloatingWindowLayout() {
         int[] anchorPos = new int[2];
+        //获取在整个屏幕内的绝对坐标
         mAnchor.getLocationOnScreen(anchorPos);
 
-        // we need to know the size of the controller so we can properly position it
-        // within its space
+
+        //定位控制条的布局
         mDecor.measure(MeasureSpec.makeMeasureSpec(mAnchor.getWidth(), MeasureSpec.AT_MOST),
                 MeasureSpec.makeMeasureSpec(mAnchor.getHeight(), MeasureSpec.AT_MOST));
 
@@ -193,7 +181,9 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         p.y = anchorPos[1] + mAnchor.getHeight() - mDecor.getMeasuredHeight();
     }
 
-    // This is called whenever mAnchor's layout bound changes
+    /**
+     * 用于更新布局的监听
+     */
     private final OnLayoutChangeListener mLayoutChangeListener =
             new OnLayoutChangeListener() {
                 @Override
@@ -207,6 +197,11 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
                 }
             };
 
+
+    /**
+     * 此监听用来控制视频的控制条的显示与消失，
+     * 可理解为点击屏幕若显示状态则消失，若消失状态则显示
+     */
     private final OnTouchListener mTouchListener = new OnTouchListener() {
         @Override
         public boolean onTouch(View v, MotionEvent event) {
@@ -219,14 +214,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         }
     };
 
-    /**
-     * Set the view that acts as the anchor for the control view.
-     * This can for example be a VideoView, or your Activity's main view.
-     * When VideoView calls this method, it will use the VideoView's parent
-     * as the anchor.
-     *
-     * @param view The view to which to anchor the controller when it is visible.
-     */
+
     public void setAnchorView(View view) {
         if (mAnchor != null) {
             mAnchor.removeOnLayoutChangeListener(mLayoutChangeListener);
