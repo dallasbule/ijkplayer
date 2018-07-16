@@ -432,8 +432,14 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         public void run() {
             int position = mPlayer.getCurrentPosition();
             int duration = mPlayer.getDuration();
-            if (position>LastTime){
-                LastTime = position;
+            if (mDragging) {
+                setProgress(position);
+                position = setProgress(position);
+                mDragging = false;
+            } else {
+                if (position > LastTime) {
+                    LastTime = position;
+                }
             }
             if (mProgress != null) {
                 if (duration > 0) {
@@ -447,8 +453,8 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
             if (mEndTime != null)
                 mEndTime.setText(stringForTime(duration));
             if (mCurrentTime != null)
-                mCurrentTime.setText(stringForTime(position)+"("+stringForTime(LastTime)+")");
-            if (!mDragging && mShowing && mPlayer.isPlaying()) {
+                mCurrentTime.setText(stringForTime(position) + "(" + stringForTime(LastTime) + ")");
+            if (mShowing && mPlayer.isPlaying()) {
                 postDelayed(mShowProgress, 1000 - (position % 1000));
             }
         }
@@ -470,7 +476,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     }
 
     private int setProgress(int position) {
-        if (mPlayer == null || mDragging) {
+        if (mPlayer == null) {
             return 0;
         }
         int duration = mPlayer.getDuration();
@@ -629,14 +635,13 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
 
             long duration = mPlayer.getDuration();
             long newposition = (duration * progress) / 1000L;
-            setProgress((int) newposition);
+            mPlayer.seekTo((int) newposition);
             if (mCurrentTime != null)
                 mCurrentTime.setText(stringForTime((int) newposition));
         }
 
         @Override
         public void onStopTrackingTouch(SeekBar bar) {
-            mDragging = false;
             updatePausePlay();
             show(sDefaultTimeout);
             post(mShowProgress);
