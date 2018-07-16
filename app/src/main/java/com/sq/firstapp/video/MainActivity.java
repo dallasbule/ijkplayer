@@ -1,13 +1,17 @@
 package com.sq.firstapp.video;
 
 import android.net.Uri;
+import android.os.Environment;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.Toolbar;
+import android.util.Log;
 
 import com.sq.firstapp.media.AndroidMediaController;
 import com.sq.firstapp.media.IjkVideoView;
+
+import java.nio.file.Path;
 
 import tv.danmaku.ijk.media.player.IMediaPlayer;
 import tv.danmaku.ijk.media.player.IjkMediaPlayer;
@@ -24,6 +28,11 @@ public class MainActivity extends AppCompatActivity implements IMediaPlayer.OnPr
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        boolean sdCardExist = Environment.getExternalStorageState()
+                .equals(android.os.Environment.MEDIA_MOUNTED);
+        if (sdCardExist) {
+            path = "/storage/emulated/0/BaiduNetdisk/RunningMan.mkv";//获取根目录
+        }
         init();
     }
 
@@ -33,7 +42,7 @@ public class MainActivity extends AppCompatActivity implements IMediaPlayer.OnPr
         setSupportActionBar(toolbar);
 
         ActionBar actionBar = getSupportActionBar();
-        mMediaController = new AndroidMediaController(this, false);
+        mMediaController = new AndroidMediaController(this, true);
         mMediaController.setSupportActionBar(actionBar);
 
         videoView = findViewById(R.id.video_view);
@@ -43,7 +52,7 @@ public class MainActivity extends AppCompatActivity implements IMediaPlayer.OnPr
         IjkMediaPlayer.native_profileBegin("libijkplayer.so");
 
         videoView.setOnPreparedListener(this);
-        videoView.setVideoURI(Uri.parse(path));
+        videoView.setVideoPath(path);
         videoView.start();
     }
 

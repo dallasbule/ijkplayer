@@ -27,6 +27,7 @@ import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
+import android.widget.Toast;
 
 
 import com.sq.firstapp.video.R;
@@ -56,8 +57,8 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     private ProgressBar mProgress;
     private TextView mEndTime, mCurrentTime;
     private boolean mShowing;
-    private boolean mDragging;// 默认自动消失的时间
-    private static final int sDefaultTimeout = 3000;
+    private boolean mDragging;
+    private static final int sDefaultTimeout = 100000;// 默认自动消失的时间
     private final boolean mUseFastForward;
     private boolean mFromXml;
     private boolean mListenersSet;
@@ -74,6 +75,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     private final AccessibilityManager mAccessibilityManager;
     private ActionBar mActionBar;
     private MediaPlayerControl mPlayer; //播放控制
+    private int LastTime = 0;//记录播放的时间
 
     public AndroidMediaController(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -140,7 +142,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
 
 
     /**
-     * 可以理解为对control布局的重新测量及定位
+     * 可以理解为对control布局的父布局的重新测量及定位
      */
     private void initFloatingWindowLayout() {
         mDecorLayoutParams = new WindowManager.LayoutParams();
@@ -163,7 +165,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     }
 
     /**
-     * 更新布局，其中anchor不可以为null
+     * 更新布局，其中anchor不可以为null,主要是对控制条在父布局的位置设置
      */
     private void updateFloatingWindowLayout() {
         int[] anchorPos = new int[2];
@@ -215,6 +217,11 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     };
 
 
+    /**
+     * 控制条的布局设置
+     *
+     * @param view
+     */
     public void setAnchorView(View view) {
         if (mAnchor != null) {
             mAnchor.removeOnLayoutChangeListener(mLayoutChangeListener);
@@ -235,11 +242,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     }
 
     /**
-     * Create the view that holds the widgets that control playback.
-     * Derived classes can override this to create their own.
-     *
-     * @return The controller view.
-     * @hide This doesn't work as advertised
+     * 创建控制条的布局
      */
     protected View makeControllerView() {
         LayoutInflater inflate = (LayoutInflater) mContext.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
@@ -250,6 +253,11 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         return mRoot;
     }
 
+    /**
+     * 对控制条的布局进行初始化设置，如按钮监听等
+     *
+     * @param v
+     */
     private void initControllerView(View v) {
         Resources res = mContext.getResources();
         mPlayDescription = res
@@ -355,7 +363,11 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
      */
     public void show(int timeout) {
         if (!mShowing && mAnchor != null) {
-            setProgress();
+            //当进度条显示的时候记录下进度
+            if (LastTime <= mPlayer.getCurrentPosition()) {
+                LastTime = mPlayer.getCurrentPosition();
+            }
+            setProgress(mPlayer.getCurrentPosition());
             if (mPauseButton != null) {
                 mPauseButton.requestFocus();
             }
@@ -413,12 +425,31 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         }
     };
 
+    //用于在显示的时候更新进度条
     private final Runnable mShowProgress = new Runnable() {
+        @SuppressLint("SetTextI18n")
         @Override
         public void run() {
-            int pos = setProgress();
+            int position = mPlayer.getCurrentPosition();
+            int duration = mPlayer.getDuration();
+            if (position>LastTime){
+                LastTime = position;
+            }
+            if (mProgress != null) {
+                if (duration > 0) {
+                    // use long to avoid overflow
+                    long pos = 1000L * position / duration;
+                    mProgress.setProgress((int) pos);
+                }
+                int percent = mPlayer.getBufferPercentage();
+                mProgress.setSecondaryProgress(percent * 10);
+            }
+            if (mEndTime != null)
+                mEndTime.setText(stringForTime(duration));
+            if (mCurrentTime != null)
+                mCurrentTime.setText(stringForTime(position)+"("+stringForTime(LastTime)+")");
             if (!mDragging && mShowing && mPlayer.isPlaying()) {
-                postDelayed(mShowProgress, 1000 - (pos % 1000));
+                postDelayed(mShowProgress, 1000 - (position % 1000));
             }
         }
     };
@@ -438,17 +469,26 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         }
     }
 
-    private int setProgress() {
+    private int setProgress(int position) {
         if (mPlayer == null || mDragging) {
             return 0;
         }
-        int position = mPlayer.getCurrentPosition();
         int duration = mPlayer.getDuration();
         if (mProgress != null) {
             if (duration > 0) {
-                // use long to avoid overflow
                 long pos = 1000L * position / duration;
-                mProgress.setProgress((int) pos);
+                //判断是否快进超出播放位置，若是回退到播放的位置
+                if (position > LastTime) {
+                    mProgress.setProgress((LastTime * 1000) / duration);
+                    mPlayer.seekTo(LastTime);
+                    mCurrentTime.setText(stringForTime(LastTime));
+                    Toast.makeText(mContext, "您还没有看完前面，无法快进", Toast.LENGTH_SHORT).show();
+                } else {
+                    mProgress.setProgress((int) pos);
+                    mPlayer.seekTo(position);
+                    mCurrentTime.setText(stringForTime(position));
+                }
+
             }
             int percent = mPlayer.getBufferPercentage();
             mProgress.setSecondaryProgress(percent * 10);
@@ -456,10 +496,8 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
 
         if (mEndTime != null)
             mEndTime.setText(stringForTime(duration));
-        if (mCurrentTime != null)
-            mCurrentTime.setText(stringForTime(position));
 
-        return position;
+        return position > LastTime ? LastTime : position;
     }
 
     @Override
@@ -579,28 +617,19 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         @Override
         public void onStartTrackingTouch(SeekBar bar) {
             show(3600000);
-
             mDragging = true;
-
-            // By removing these pending progress messages we make sure
-            // that a) we won't update the progress while the user adjusts
-            // the seekbar and b) once the user is done dragging the thumb
-            // we will post one of these messages to the queue again and
-            // this ensures that there will be exactly one message queued up.
             removeCallbacks(mShowProgress);
         }
 
         @Override
         public void onProgressChanged(SeekBar bar, int progress, boolean fromuser) {
             if (!fromuser) {
-                // We're not interested in programmatically generated changes to
-                // the progress bar's position.
                 return;
             }
 
             long duration = mPlayer.getDuration();
             long newposition = (duration * progress) / 1000L;
-            mPlayer.seekTo((int) newposition);
+            setProgress((int) newposition);
             if (mCurrentTime != null)
                 mCurrentTime.setText(stringForTime((int) newposition));
         }
@@ -608,13 +637,8 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         @Override
         public void onStopTrackingTouch(SeekBar bar) {
             mDragging = false;
-            setProgress();
             updatePausePlay();
             show(sDefaultTimeout);
-
-            // Ensure that progress is properly updated in the future,
-            // the call to show() does not guarantee this because it is a
-            // no-op if we are already showing.
             post(mShowProgress);
         }
     };
@@ -654,25 +678,29 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         return AndroidMediaController.class.getName();
     }
 
+    /**
+     * 快退监听
+     */
     private final View.OnClickListener mRewListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
             int pos = mPlayer.getCurrentPosition();
             pos -= 5000; // milliseconds
             mPlayer.seekTo(pos);
-            setProgress();
-
+            setProgress(pos);
             show(sDefaultTimeout);
         }
     };
 
+    /**
+     * 快进监听
+     */
     private final View.OnClickListener mFfwdListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
             int pos = mPlayer.getCurrentPosition();
             pos += 15000; // milliseconds
-            mPlayer.seekTo(pos);
-            setProgress();
+            setProgress(pos);
 
             show(sDefaultTimeout);
         }
