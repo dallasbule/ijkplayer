@@ -20,7 +20,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
-import android.view.accessibility.AccessibilityManager;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
@@ -57,22 +56,17 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     private ProgressBar mProgress;
     private TextView mEndTime, mCurrentTime;
     private boolean mShowing;
-    private boolean mDragging;
+    private boolean mDragging;//是否是拖拽
     private static final int sDefaultTimeout = 100000;// 默认自动消失的时间
     private final boolean mUseFastForward;
     private boolean mFromXml;
-    private boolean mListenersSet;
-    private View.OnClickListener mNextListener, mPrevListener;
     StringBuilder mFormatBuilder;
     Formatter mFormatter;
-    private ImageButton mPauseButton;
-    private ImageButton mFfwdButton;
-    private ImageButton mRewButton;
-    private ImageButton mNextButton;
-    private ImageButton mPrevButton;
-    private CharSequence mPlayDescription;
-    private CharSequence mPauseDescription;
-    private final AccessibilityManager mAccessibilityManager;
+    private ImageButton mPauseButton;//暂停/播放按钮
+    private ImageButton mFfwdButton;//快进按钮
+    private ImageButton mRewButton;//快退按钮
+    private CharSequence mPlayDescription;//播放状态时按钮对应文字
+    private CharSequence mPauseDescription;//暂停状态时按钮对应文字
     private ActionBar mActionBar;
     private MediaPlayerControl mPlayer; //播放控制
     private int LastTime = 0;//记录播放的时间
@@ -83,7 +77,6 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         mContext = context;
         mUseFastForward = true;
         mFromXml = true;
-        mAccessibilityManager = (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
     }
 
     @Override
@@ -100,7 +93,6 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         //创建该control的布局
         initFloatingWindowLayout();
         initFloatingWindow();
-        mAccessibilityManager = (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
     }
 
     public AndroidMediaController(Context context) {
@@ -286,16 +278,6 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
             }
         }
 
-        // By default these are hidden. They will be enabled when setPrevNextListeners() is called
-        mNextButton = v.findViewById(R.id.next);
-        if (mNextButton != null && !mFromXml && !mListenersSet) {
-            mNextButton.setVisibility(View.GONE);
-        }
-        mPrevButton = v.findViewById(R.id.prev);
-        if (mPrevButton != null && !mFromXml && !mListenersSet) {
-            mPrevButton.setVisibility(View.GONE);
-        }
-
         mProgress = v.findViewById(R.id.mediacontroller_progress);
         if (mProgress != null) {
             if (mProgress instanceof SeekBar) {
@@ -309,21 +291,10 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         mCurrentTime = v.findViewById(R.id.time_current);
         mFormatBuilder = new StringBuilder();
         mFormatter = new Formatter(mFormatBuilder, Locale.getDefault());
-
-        installPrevNextListeners();
     }
 
     /**
-     * Show the controller on screen. It will go away
-     * automatically after 3 seconds of inactivity.
-     */
-    public void show() {
-        show(sDefaultTimeout);
-    }
-
-    /**
-     * Disable pause or seek buttons if the stream cannot be paused or seeked.
-     * This requires the control interface to be a MediaPlayerControlExt
+     * 如果视频是不能暂停或者快进快退的，则对这些按钮进行不可点击操作，如直播
      */
     private void disableUnsupportedButtons() {
         try {
@@ -336,30 +307,22 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
             if (mFfwdButton != null && !mPlayer.canSeekForward()) {
                 mFfwdButton.setEnabled(false);
             }
-            // TODO What we really should do is add a canSeek to the MediaPlayerControl interface;
-            // this scheme can break the case when applications want to allow seek through the
-            // progress bar but disable forward/backward buttons.
-            //
-            // However, currently the flags SEEK_BACKWARD_AVAILABLE, SEEK_FORWARD_AVAILABLE,
-            // and SEEK_AVAILABLE are all (un)set together; as such the aforementioned issue
-            // shouldn't arise in existing applications.
             if (mProgress != null && !mPlayer.canSeekBackward() && !mPlayer.canSeekForward()) {
                 mProgress.setEnabled(false);
             }
         } catch (IncompatibleClassChangeError ex) {
-            // We were given an old version of the interface, that doesn't have
-            // the canPause/canSeekXYZ methods. This is OK, it just means we
-            // assume the media can be paused and seeked, and so we don't disable
-            // the buttons.
+
         }
     }
 
+    public void show() {
+        this.show(sDefaultTimeout);
+    }
+
     /**
-     * Show the controller on screen. It will go away
-     * automatically after 'timeout' milliseconds of inactivity.
+     * 控制条显示
      *
-     * @param timeout The timeout in milliseconds. Use 0 to show
-     *                the controller until hide() is called.
+     * @param timeout 超时时间，多少秒后会隐藏
      */
     public void show(int timeout) {
         if (!mShowing && mAnchor != null) {
@@ -377,13 +340,11 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
             mShowing = true;
         }
         updatePausePlay();
-
-        // cause the progress bar to be updated even if mShowing
-        // was already true.  This happens, for example, if we're
-        // paused with the progress bar showing the user hits play.
+        //当控制条显示时，实时对控制条进行ui更新
         post(mShowProgress);
 
-        if (timeout != 0 && !mAccessibilityManager.isTouchExplorationEnabled()) {
+        if (timeout != 0) {
+            //清楚上一个创建的mFadeOut，同时开启下一个并延迟执行达到默认时间控制条消失的目的
             removeCallbacks(mFadeOut);
             postDelayed(mFadeOut, timeout);
         }
@@ -418,6 +379,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         mShowOnceArray.clear();
     }
 
+    //隐藏控制条
     private final Runnable mFadeOut = new Runnable() {
         @Override
         public void run() {
@@ -425,7 +387,7 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         }
     };
 
-    //用于在显示的时候更新进度条
+    //用于在显示的时候更新进度条(实时更新）
     private final Runnable mShowProgress = new Runnable() {
         @SuppressLint("SetTextI18n")
         @Override
@@ -435,7 +397,6 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
             if (mDragging) {
                 setProgress(position);
                 position = setProgress(position);
-                mDragging = false;
             } else {
                 if (position > LastTime) {
                     LastTime = position;
@@ -460,6 +421,13 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         }
     };
 
+
+    /**
+     * 将时间转化为字符串
+     *
+     * @param timeMs 时间
+     * @return
+     */
     private String stringForTime(int timeMs) {
         int totalSeconds = timeMs / 1000;
 
@@ -475,9 +443,18 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         }
     }
 
+    /**
+     * 更新进度条（主要用于刚刚显示进度条时候的定位，非实时更新)
+     *
+     * @param position 进度条所处位置
+     * @return
+     */
     private int setProgress(int position) {
         if (mPlayer == null) {
             return 0;
+        }
+        if (position < 0) {
+            position = 0;
         }
         int duration = mPlayer.getDuration();
         if (mProgress != null) {
@@ -506,14 +483,21 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         return position > LastTime ? LastTime : position;
     }
 
+
+    /**
+     * 点击事件分发,主要是对控制条的显示与否的控制
+     *
+     * @param event
+     * @return
+     */
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                show(0); // show until hide is called
+                show(0); //为0时候该方法有个判断不执行控制条消失，也就是按下就会一直显示
                 break;
             case MotionEvent.ACTION_UP:
-                show(sDefaultTimeout); // start timeout
+                show(sDefaultTimeout); //松开则执行默认时间后控制条消失
                 break;
             case MotionEvent.ACTION_CANCEL:
                 hide();
@@ -586,6 +570,9 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         }
     };
 
+    /**
+     * 显示暂停或者播放的按钮并修改对应文字
+     */
     private void updatePausePlay() {
         if (mRoot == null || mPauseButton == null)
             return;
@@ -599,6 +586,9 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         }
     }
 
+    /**
+     *更改播放器状态（播放/停止）
+     */
     private void doPauseResume() {
         if (mPlayer.isPlaying()) {
             mPlayer.pause();
@@ -608,17 +598,10 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         updatePausePlay();
     }
 
-    // There are two scenarios that can trigger the seekbar listener to trigger:
-    //
-    // The first is the user using the touchpad to adjust the posititon of the
-    // seekbar's thumb. In this case onStartTrackingTouch is called followed by
-    // a number of onProgressChanged notifications, concluded by onStopTrackingTouch.
-    // We're setting the field "mDragging" to true for the duration of the dragging
-    // session to avoid jumps in the position in case of ongoing playback.
-    //
-    // The second scenario involves the user operating the scroll ball, in this
-    // case there WON'T BE onStartTrackingTouch/onStopTrackingTouch notifications,
-    // we will simply apply the updated position without suspending regular updates.
+
+    /**
+     * 进度条的监听，用于拖动进度条的一系列ui变化及事件操作
+     */
     private final OnSeekBarChangeListener mSeekListener = new OnSeekBarChangeListener() {
         @Override
         public void onStartTrackingTouch(SeekBar bar) {
@@ -635,16 +618,26 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
 
             long duration = mPlayer.getDuration();
             long newposition = (duration * progress) / 1000L;
-            mPlayer.seekTo((int) newposition);
+            if (newposition < LastTime) {
+                mPlayer.seekTo((int) newposition);
+            }
+            mFfwdButton.setEnabled(false);
+            mRewButton.setEnabled(false);
+            mPlayer.pause();
             if (mCurrentTime != null)
-                mCurrentTime.setText(stringForTime((int) newposition));
+                mCurrentTime.setText(stringForTime((int) newposition) + "(" + stringForTime(LastTime) + ")");
         }
 
         @Override
         public void onStopTrackingTouch(SeekBar bar) {
             updatePausePlay();
+            mFfwdButton.setEnabled(true);
+            mRewButton.setEnabled(true);
+            mPlayer.start();
+            mDragging = false;
             show(sDefaultTimeout);
             post(mShowProgress);
+            updatePausePlay();
         }
     };
 
@@ -659,12 +652,6 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
         if (mRewButton != null) {
             mRewButton.setEnabled(enabled);
         }
-        if (mNextButton != null) {
-            mNextButton.setEnabled(enabled && mNextListener != null);
-        }
-        if (mPrevButton != null) {
-            mPrevButton.setEnabled(enabled && mPrevListener != null);
-        }
         if (mProgress != null) {
             mProgress.setEnabled(enabled);
         }
@@ -676,11 +663,6 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     public void setMediaPlayer(MediaPlayerControl player) {
         mPlayer = player;
         updatePausePlay();
-    }
-
-    @Override
-    public CharSequence getAccessibilityClassName() {
-        return AndroidMediaController.class.getName();
     }
 
     /**
@@ -706,39 +688,9 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
             int pos = mPlayer.getCurrentPosition();
             pos += 15000; // milliseconds
             setProgress(pos);
-
             show(sDefaultTimeout);
         }
     };
-
-    private void installPrevNextListeners() {
-        if (mNextButton != null) {
-            mNextButton.setOnClickListener(mNextListener);
-            mNextButton.setEnabled(mNextListener != null);
-        }
-
-        if (mPrevButton != null) {
-            mPrevButton.setOnClickListener(mPrevListener);
-            mPrevButton.setEnabled(mPrevListener != null);
-        }
-    }
-
-    public void setPrevNextListeners(View.OnClickListener next, View.OnClickListener prev) {
-        mNextListener = next;
-        mPrevListener = prev;
-        mListenersSet = true;
-
-        if (mRoot != null) {
-            installPrevNextListeners();
-
-            if (mNextButton != null && !mFromXml) {
-                mNextButton.setVisibility(View.VISIBLE);
-            }
-            if (mPrevButton != null && !mFromXml) {
-                mPrevButton.setVisibility(View.VISIBLE);
-            }
-        }
-    }
 
     public interface MediaPlayerControl {
         void start();
@@ -771,9 +723,8 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     }
 
     /**
-     * 自定义的一些方法
+     * 自定义的一些方法,标题栏的显示与隐藏
      */
-
     public void setSupportActionBar(@Nullable ActionBar actionBar) {
         mActionBar = actionBar;
         if (isShowing()) {
@@ -791,6 +742,6 @@ public class AndroidMediaController extends FrameLayout implements IMediaControl
     public void showOnce(@NonNull View view) {
         mShowOnceArray.add(view);
         view.setVisibility(View.VISIBLE);
-        show();
+        show(sDefaultTimeout);
     }
 }
